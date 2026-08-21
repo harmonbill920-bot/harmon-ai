@@ -1,1 +1,1359 @@
 
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Harmon AI Predictor
+    </title>
+
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='style.css'
+        ) }}"
+    >
+
+</head>
+
+
+<body>
+
+
+<div class="container">
+
+
+    <!-- HEADER -->
+
+    <header class="header">
+
+        <div class="logo">
+
+            HARMON
+            <span>AI</span>
+
+        </div>
+
+
+        <h1>
+
+            Football AI Predictor
+
+        </h1>
+
+
+        <p>
+
+            Statistical football analysis
+
+        </p>
+
+    </header>
+
+
+    <!-- SEARCH -->
+    <section class="search-panel">
+        <div class="search-row">
+            <span class="search-icon">⌕</span>
+            <input id="searchInput" type="text" autocomplete="off"
+                   placeholder="Search team e.g. Simba, Yanga, Arsenal...">
+            <button id="clearSearch" type="button" aria-label="Clear search">×</button>
+        </div>
+        <div id="searchResults" class="search-results hidden"></div>
+    </section>
+
+    <!-- MATCHES -->
+    <section>
+        <div class="section-title">
+            <div>
+                <h2 id="matchesTitle">📅 Today's Matches</h2>
+                <p id="matchesSubtitle" class="section-subtitle">Grouped by country and league</p>
+            </div>
+            <span id="matchCount">Loading...</span>
+        </div>
+
+        <div id="matches">
+            <div class="loading">Loading matches...</div>
+        </div>
+    </section>
+
+
+</div>
+
+
+<script>
+
+
+// ==========================================================
+// GLOBAL
+// ==========================================================
+
+let allMatches = [];
+
+
+// ==========================================================
+// LOAD MATCHES
+// ==========================================================
+
+async function loadMatches() {
+
+    const matchesContainer =
+        document.getElementById("matches");
+
+    matchesContainer.innerHTML = `
+        <div class="loading-state">
+            Loading today's matches...
+        </div>
+    `;
+
+    try {
+
+        const response =
+            await fetch("/api/matches", {
+                cache: "no-store"
+            });
+
+        const data =
+            await response.json();
+
+        if (!response.ok || !data.success) {
+
+            showError(
+                formatError(data.error || `Server returned HTTP ${response.status}`)
+            );
+
+            return;
+
+        }
+
+
+        allMatches =
+            data.matches;
+
+
+        displayMatches(
+            allMatches
+        );
+
+
+    }
+
+    catch(error) {
+
+
+        console.error(error);
+
+
+        showError(
+            "Failed to load matches."
+        );
+
+    }
+
+}
+
+
+// ==========================================================
+// ERROR
+// ==========================================================
+
+function formatError(message) {
+
+    if (message === null || message === undefined) {
+        return "Unknown error";
+    }
+
+    if (typeof message === "object") {
+        try {
+            return JSON.stringify(message, null, 2);
+        } catch (error) {
+            return String(message);
+        }
+    }
+
+    return String(message);
+}
+
+
+function escapeHtml(value) {
+
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+
+function showError(
+    message
+) {
+
+    const safeMessage =
+        escapeHtml(formatError(message));
+
+    document.getElementById(
+        "matches"
+    ).innerHTML = `
+
+        <div class="error">
+
+            <strong>⚠️ API Error</strong>
+
+            <pre>${safeMessage}</pre>
+
+        </div>
+
+    `;
+
+}
+
+
+// ==========================================================
+// LEAGUE FILTER
+// ==========================================================
+
+function createLeagueFilter() {
+
+
+    const select =
+        document.getElementById(
+            "leagueFilter"
+        );
+
+
+    const leagues =
+        new Map();
+
+
+    allMatches.forEach(
+        match => {
+
+
+            leagues.set(
+
+                match.league_id,
+
+                match.league_name
+
+            );
+
+        }
+    );
+
+
+    leagues.forEach(
+        (name, id) => {
+
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+
+            option.value =
+                id;
+
+
+            option.textContent =
+                name;
+
+
+            select.appendChild(
+                option
+            );
+
+        }
+    );
+
+}
+
+
+// ==========================================================
+// DISPLAY MATCHES — COUNTRY → LEAGUE → MATCHES
+// ==========================================================
+
+const LIVE_STATUSES = ["1H", "2H", "ET", "BT", "P", "LIVE"];
+
+const COUNTRY_FLAGS = {
+    "Tanzania": "🇹🇿", "Germany": "🇩🇪", "England": "🏴", "Spain": "🇪🇸",
+    "Italy": "🇮🇹", "France": "🇫🇷", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
+    "Portugal": "🇵🇹", "Netherlands": "🇳🇱", "Belgium": "🇧🇪", "Turkey": "🇹🇷",
+    "Albania": "🇦🇱", "Scotland": "🏴", "United States": "🇺🇸", "Mexico": "🇲🇽",
+    "South Africa": "🇿🇦", "Kenya": "🇰🇪", "Uganda": "🇺🇬", "Egypt": "🇪🇬",
+    "Saudi-Arabia": "🇸🇦", "Saudi Arabia": "🇸🇦", "International": "🌍"
+};
+
+function countryFlag(country) {
+    return COUNTRY_FLAGS[country] || "🌍";
+}
+
+function isLiveMatch(match) {
+    return LIVE_STATUSES.includes(String(match.status || "").toUpperCase());
+}
+
+function matchStatusLabel(match) {
+    const status = String(match.status || "").toUpperCase();
+    if (status === "HT") return "🟡 HT";
+    if (isLiveMatch(match)) {
+        const elapsed = Number(match.elapsed);
+        return Number.isFinite(elapsed) ? `🔴 ${elapsed}'` : "🔴 LIVE";
+    }
+    if (["FT", "AET", "P"].includes(status) && status !== "P") return `✅ ${status}`;
+    if (["PST", "CANC", "ABD", "AWD", "WO"].includes(status)) return `⚠️ ${status}`;
+    return formatKickoff(match.date);
+}
+
+function formatKickoff(value) {
+    if (!value) return "TBA";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "TBA";
+    return date.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+}
+
+function scoreText(match) {
+    const hg = match.home_goals;
+    const ag = match.away_goals;
+    if (hg !== null && hg !== undefined && ag !== null && ag !== undefined) {
+        return `${hg} - ${ag}`;
+    }
+    return formatKickoff(match.date);
+}
+
+function groupByCountryAndLeague(matches) {
+    const countries = new Map();
+    (matches || []).forEach(match => {
+        const country = match.country || "International";
+        const leagueKey = `${match.league_id || "unknown"}`;
+        if (!countries.has(country)) countries.set(country, new Map());
+        const leagues = countries.get(country);
+        if (!leagues.has(leagueKey)) {
+            leagues.set(leagueKey, {name: match.league_name || "Football", logo: match.league_logo || "", matches: []});
+        }
+        leagues.get(leagueKey).matches.push(match);
+    });
+    return countries;
+}
+
+function renderMatchCard(match) {
+    const live = isLiveMatch(match);
+    const status = String(match.status || "").toUpperCase();
+    const card = document.createElement("div");
+    card.className = `match-card ${live ? "is-live" : ""}`;
+
+    const statusHtml = `<span class="status-pill ${live ? "live-pill" : status === "HT" ? "ht-pill" : ""}">${escapeHtml(matchStatusLabel(match))}</span>`;
+    const score = scoreText(match);
+
+    card.innerHTML = `
+        <div class="team team-home">
+            <img src="${escapeHtml(match.home_logo || "")}" alt="" onerror="this.style.visibility='hidden'">
+            <span>${escapeHtml(match.home_team || "Home")}</span>
+        </div>
+        <div class="match-middle">
+            ${statusHtml}
+            <strong class="score ${live ? "live-score" : ""}">${escapeHtml(score)}</strong>
+            <button onclick="analyzeMatch(${Number(match.fixture_id)}, this)">🔮 Analyze</button>
+        </div>
+        <div class="team team-away">
+            <img src="${escapeHtml(match.away_logo || "")}" alt="" onerror="this.style.visibility='hidden'">
+            <span>${escapeHtml(match.away_team || "Away")}</span>
+        </div>
+    `;
+    return card;
+}
+
+function displayMatches(matches) {
+    const container = document.getElementById("matches");
+    const count = document.getElementById("matchCount");
+    count.textContent = `${matches.length} matches`;
+
+    if (!matches.length) {
+        container.innerHTML = `<div class="empty">No matches found.</div>`;
+        return;
+    }
+
+    container.innerHTML = "";
+    const countries = groupByCountryAndLeague(matches);
+
+    countries.forEach((leagues, country) => {
+        const countryBox = document.createElement("div");
+        countryBox.className = "country-section";
+        countryBox.innerHTML = `
+            <div class="country-header">
+                <span class="country-flag">${countryFlag(country)}</span>
+                <strong>${escapeHtml(country)}</strong>
+                <span class="country-line"></span>
+                <span class="country-count">${Array.from(leagues.values()).reduce((n,l)=>n+l.matches.length,0)}</span>
+            </div>
+        `;
+
+        leagues.forEach(league => {
+            const leagueBox = document.createElement("div");
+            leagueBox.className = "league-box";
+            leagueBox.innerHTML = `
+                <div class="league-header">
+                    <div class="league-title">
+                        ${league.logo ? `<img src="${escapeHtml(league.logo)}" alt="" onerror="this.style.display='none'">` : `<span>🏆</span>`}
+                        <div><strong>${escapeHtml(league.name)}</strong><small>${escapeHtml(country)}</small></div>
+                    </div>
+                    <span class="chevron">⌃</span>
+                </div>
+            `;
+            league.matches.forEach(match => leagueBox.appendChild(renderMatchCard(match)));
+            countryBox.appendChild(leagueBox);
+        });
+        container.appendChild(countryBox);
+    });
+}
+
+// ==========================================================
+// TEAM SEARCH — SEARCH API, NOT ONLY TODAY'S MATCHES
+// ==========================================================
+
+let searchTimer = null;
+let currentSearch = "";
+
+function showSearchResultsLoading() {
+    const box = document.getElementById("searchResults");
+    box.classList.remove("hidden");
+    box.innerHTML = `<div class="search-loading">Searching teams...</div>`;
+}
+
+function hideSearchResults() {
+    document.getElementById("searchResults").classList.add("hidden");
+}
+
+async function searchTeamsLive(query) {
+    query = query.trim();
+    currentSearch = query;
+    if (query.length < 2) {
+        hideSearchResults();
+        document.getElementById("matchesTitle").textContent = "📅 Today's Matches";
+        document.getElementById("matchesSubtitle").textContent = "Grouped by country and league";
+        displayMatches(allMatches);
+        return;
+    }
+
+    showSearchResultsLoading();
+    try {
+        const response = await fetch(`/api/team-search?q=${encodeURIComponent(query)}`, {cache: "no-store"});
+        const data = await response.json();
+        if (currentSearch !== query) return;
+        if (!response.ok || !data.success) throw new Error(data.error || "Team search failed");
+        renderTeamSearchResults(data.teams || []);
+    } catch (error) {
+        document.getElementById("searchResults").innerHTML = `<div class="search-error">⚠️ ${escapeHtml(error.message || error)}</div>`;
+    }
+}
+
+function renderTeamSearchResults(teams) {
+    const box = document.getElementById("searchResults");
+    box.classList.remove("hidden");
+    if (!teams.length) {
+        box.innerHTML = `<div class="search-empty">No team found. Try another name.</div>`;
+        return;
+    }
+    box.innerHTML = `<div class="search-label">Teams</div>`;
+    teams.forEach(team => {
+        const item = document.createElement("button");
+        item.className = "team-result";
+        item.innerHTML = `
+            <img src="${escapeHtml(team.logo || "")}" alt="" onerror="this.style.visibility='hidden'">
+            <span><strong>${escapeHtml(team.name)}</strong><small>Open team matches & AI analysis</small></span>
+            <b>›</b>
+        `;
+        item.onclick = () => openTeam(team);
+        box.appendChild(item);
+    });
+}
+
+async function openTeam(team) {
+    hideSearchResults();
+    document.getElementById("matchesTitle").textContent = `⚽ ${team.name}`;
+    document.getElementById("matchesSubtitle").textContent = "Upcoming matches grouped by country and league";
+    const container = document.getElementById("matches");
+    container.innerHTML = `<div class="loading">Loading ${escapeHtml(team.name)} matches...</div>`;
+
+    try {
+        const response = await fetch(`/api/team/${Number(team.id)}/upcoming?next=10`, {cache: "no-store"});
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || "Team matches not found");
+        displayMatches(data.matches || []);
+        document.getElementById("matchesSubtitle").textContent = `${data.count || 0} matches • country and league grouped automatically`;
+    } catch (error) {
+        container.innerHTML = `<div class="error"><strong>⚠️ ${escapeHtml(error.message || error)}</strong></div>`;
+    }
+}
+
+function clearSearch() {
+    document.getElementById("searchInput").value = "";
+    currentSearch = "";
+    hideSearchResults();
+    document.getElementById("matchesTitle").textContent = "📅 Today's Matches";
+    document.getElementById("matchesSubtitle").textContent = "Grouped by country and league";
+    displayMatches(allMatches);
+}
+
+// ==========================================================
+// ANALYZE
+// ==========================================================
+
+async function analyzeMatch(
+    fixtureId,
+    button
+) {
+
+
+    button.disabled =
+        true;
+
+
+    button.textContent =
+        "⏳ Analyzing...";
+
+
+    try {
+
+
+        const response =
+            await fetch(
+                `/api/analyze/${fixtureId}`
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok || !data.success) {
+
+            alert(
+                formatError(
+                    data.error ||
+                    `Server returned HTTP ${response.status}`
+                )
+            );
+
+            return;
+
+        }
+
+
+        showAnalysis(
+            data
+        );
+
+
+    }
+
+    catch(error) {
+
+
+        console.error(error);
+
+
+        alert(
+            "Analysis failed: " +
+            formatError(error.message || error)
+        );
+
+    }
+
+    finally {
+
+
+        button.disabled =
+            false;
+
+
+        button.textContent =
+            "🔮 Analyze";
+
+    }
+
+}
+
+
+// ==========================================================
+// SHOW ANALYSIS
+// ==========================================================
+
+function showAnalysis(data) {
+
+    // ==========================================================
+    // NORMALIZE BACKEND RESPONSE
+    // ==========================================================
+    // predictor_engine.py returns prediction fields directly
+    // (home_probability, draw_probability, away_probability,
+    // home_xg, away_xg, over_under, btts, double_chance,
+    // strongest_market, confidence, home_form, away_form).
+    //
+    // Some older backend versions may wrap them inside
+    // prediction / analysis / harmon_ai. This normalizer supports
+    // both formats so the frontend does not show "undefined" or 0%.
+    // ==========================================================
+
+    data = data || {};
+
+    const match =
+        data.match ||
+        data.fixture ||
+        data.match_data ||
+        {};
+
+    const rawHome =
+        data.home ||
+        match.home ||
+        {};
+
+    const rawAway =
+        data.away ||
+        match.away ||
+        {};
+
+    const homeName =
+        rawHome.name ||
+        rawHome.team_name ||
+        match.home_team ||
+        data.home_team ||
+        "Home Team";
+
+    const awayName =
+        rawAway.name ||
+        rawAway.team_name ||
+        match.away_team ||
+        data.away_team ||
+        "Away Team";
+
+    const homeLogo =
+        rawHome.logo ||
+        rawHome.team_logo ||
+        match.home_logo ||
+        data.home_logo ||
+        "";
+
+    const awayLogo =
+        rawAway.logo ||
+        rawAway.team_logo ||
+        match.away_logo ||
+        data.away_logo ||
+        "";
+
+    const leagueData =
+        data.league ||
+        match.league ||
+        {};
+
+    data.home = {
+        ...rawHome,
+        name: homeName,
+        logo: homeLogo
+    };
+
+    data.away = {
+        ...rawAway,
+        name: awayName,
+        logo: awayLogo
+    };
+
+    data.league = {
+        ...leagueData,
+        name:
+            leagueData.name ||
+            match.league_name ||
+            data.league_name ||
+            "Football",
+        country:
+            leagueData.country ||
+            match.country ||
+            data.country ||
+            ""
+    };
+
+    // ==========================================================
+    // FIND PREDICTION OBJECT
+    // ==========================================================
+
+    const ai =
+        data.harmon_ai ||
+        data.prediction ||
+        data.analysis ||
+        data.result ||
+        data;
+
+    // ==========================================================
+    // SAFE NUMBER
+    // ==========================================================
+
+    function number(value, fallback = 0) {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : fallback;
+    }
+
+    // ==========================================================
+    // RESULT PROBABILITIES
+    // Supports both:
+    // 1. home_probability / draw_probability / away_probability
+    // 2. result_probabilities.home / draw / away
+    // ==========================================================
+
+    const resultSource =
+        ai.result_probabilities ||
+        ai.result ||
+        {};
+
+    const homeProbability = number(
+        ai.home_probability ??
+        resultSource.home ??
+        resultSource.home_win,
+        0
+    );
+
+    const drawProbability = number(
+        ai.draw_probability ??
+        resultSource.draw ??
+        resultSource.draw_probability,
+        0
+    );
+
+    const awayProbability = number(
+        ai.away_probability ??
+        resultSource.away ??
+        resultSource.away_win,
+        0
+    );
+
+    // ==========================================================
+    // EXPECTED GOALS
+    // ==========================================================
+
+    const expectedSource =
+        ai.expected_goals ||
+        ai.expectedGoals ||
+        {};
+
+    const homeXG = number(
+        ai.home_xg ??
+        expectedSource.home,
+        0
+    );
+
+    const awayXG = number(
+        ai.away_xg ??
+        expectedSource.away,
+        0
+    );
+
+    const totalXG = number(
+        expectedSource.total,
+        homeXG + awayXG
+    );
+
+    // ==========================================================
+    // GOAL MARKETS
+    // ==========================================================
+
+    const ou =
+        ai.over_under ||
+        ai.overUnder ||
+        {};
+
+    const bttsSource =
+        ai.btts ||
+        {};
+
+    const goals = {
+        over_1_5: number(
+            ou.over_1_5 ??
+            ou.over15,
+            0
+        ),
+
+        over_2_5: number(
+            ou.over_2_5 ??
+            ou.over25,
+            0
+        ),
+
+        under_2_5: number(
+            ou.under_2_5 ??
+            ou.under25,
+            0
+        ),
+
+        over_3_5: number(
+            ou.over_3_5 ??
+            ou.over35,
+            0
+        ),
+
+        btts_yes: number(
+            bttsSource.yes ??
+            bttsSource.btts_yes,
+            0
+        ),
+
+        btts_no: number(
+            bttsSource.no ??
+            bttsSource.btts_no,
+            0
+        )
+    };
+
+    // ==========================================================
+    // DOUBLE CHANCE
+    // ==========================================================
+
+    const doubleChance =
+        ai.double_chance ||
+        ai.doubleChance ||
+        {
+            "1X": 0,
+            "X2": 0,
+            "12": 0
+        };
+
+    // ==========================================================
+    // FORM
+    // ==========================================================
+
+    const homeForm =
+        ai.home_form ||
+        data.home_form ||
+        {
+            form_string: "N/A",
+            matches: 0,
+            points_per_game: 0
+        };
+
+    const awayForm =
+        ai.away_form ||
+        data.away_form ||
+        {
+            form_string: "N/A",
+            matches: 0,
+            points_per_game: 0
+        };
+
+    // ==========================================================
+    // STRONGEST MARKET
+    // predictor_engine.py returns:
+    // {
+    //   market: "Home Win",
+    //   probability: 55.2,
+    //   name: "Home Win",
+    //   label: "Home Win"
+    // }
+    // ==========================================================
+
+    const strongest =
+        ai.strongest_market ||
+        {};
+
+    const bestMarket =
+        typeof strongest === "string"
+            ? strongest
+            : (
+                strongest.market ||
+                strongest.name ||
+                strongest.label ||
+                ai.best_market ||
+                "N/A"
+            );
+
+    const bestMarketProbability = number(
+        typeof strongest === "object"
+            ? (
+                strongest.probability ??
+                strongest.percentage ??
+                strongest.value_probability
+            )
+            : ai.best_market_probability,
+        number(ai.best_market_probability, 0)
+    );
+
+    // ==========================================================
+    // PREDICTED RESULT
+    // ==========================================================
+
+    let predictedResult =
+        ai.predicted_result ||
+        ai.predictedResult ||
+        "";
+
+    if (!predictedResult) {
+        if (
+            homeProbability >= drawProbability &&
+            homeProbability >= awayProbability
+        ) {
+            predictedResult = "Home Win";
+        } else if (
+            awayProbability >= homeProbability &&
+            awayProbability >= drawProbability
+        ) {
+            predictedResult = "Away Win";
+        } else {
+            predictedResult = "Draw";
+        }
+    }
+
+    // ==========================================================
+    // CONFIDENCE
+    // ==========================================================
+
+    const confidence = number(
+        ai.confidence,
+        0
+    );
+
+    // ==========================================================
+    // H2H
+    // predictor_engine.py returns an object, not an array.
+    // ==========================================================
+
+    const h2h =
+        ai.h2h ||
+        data.h2h ||
+        {};
+
+    const h2hMatches = number(
+        h2h.matches,
+        Array.isArray(h2h) ? h2h.length : 0
+    );
+
+    // ==========================================================
+    // API PREDICTION
+    // ==========================================================
+
+    const apiPrediction =
+        ai.api_prediction ??
+        data.api_prediction ??
+        null;
+
+    // ==========================================================
+    // RENDER
+    // ==========================================================
+
+    const html = `
+
+        <div class="analysis-overlay" id="analysisModal">
+
+            <div class="analysis-modal">
+
+                <button
+                    class="close-analysis"
+                    onclick="closeAnalysis()"
+                >
+                    ×
+                </button>
+
+                <!-- MATCH HEADER -->
+
+                <div class="analysis-header">
+
+                    <img
+                        src="${escapeHtml(data.home.logo)}"
+                        alt=""
+                    >
+
+                    <div>
+
+                        <h2>
+                            ${escapeHtml(data.home.name)}
+                            <span>VS</span>
+                            ${escapeHtml(data.away.name)}
+                        </h2>
+
+                        <p>
+                            ${escapeHtml(data.league.name)}
+                            •
+                            ${escapeHtml(data.league.country)}
+                        </p>
+
+                    </div>
+
+                    <img
+                        src="${escapeHtml(data.away.logo)}"
+                        alt=""
+                    >
+
+                </div>
+
+                <!-- MODEL -->
+
+                <div class="model-badge">
+                    🤖 Harmon AI Statistical Engine
+                </div>
+
+                <!-- CONFIDENCE -->
+
+                <div class="confidence">
+
+                    <span>
+                        Model Confidence
+                    </span>
+
+                    <strong>
+                        ${confidence}%
+                    </strong>
+
+                </div>
+
+                <!-- RESULT -->
+
+                <h3>
+                    🎯 Match Result Probability
+                </h3>
+
+                <div class="prediction-grid">
+
+                    <div class="prediction-box">
+
+                        <span>
+                            🏠 Home Win
+                        </span>
+
+                        <strong>
+                            ${homeProbability}%
+                        </strong>
+
+                    </div>
+
+                    <div class="prediction-box">
+
+                        <span>
+                            🤝 Draw
+                        </span>
+
+                        <strong>
+                            ${drawProbability}%
+                        </strong>
+
+                    </div>
+
+                    <div class="prediction-box">
+
+                        <span>
+                            ✈️ Away Win
+                        </span>
+
+                        <strong>
+                            ${awayProbability}%
+                        </strong>
+
+                    </div>
+
+                </div>
+
+                <!-- PREDICTED RESULT -->
+
+                <div class="best-prediction">
+
+                    <span>
+                        Most likely result
+                    </span>
+
+                    <strong>
+                        ${escapeHtml(predictedResult)}
+                    </strong>
+
+                </div>
+
+                <!-- EXPECTED GOALS -->
+
+                <h3>
+                    ⚽ Expected Goals
+                </h3>
+
+                <div class="expected-goals">
+
+                    <div>
+                        <span>
+                            ${escapeHtml(data.home.name)}
+                        </span>
+
+                        <strong>
+                            ${homeXG.toFixed(2)}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>
+                            Total
+                        </span>
+
+                        <strong>
+                            ${totalXG.toFixed(2)}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span>
+                            ${escapeHtml(data.away.name)}
+                        </span>
+
+                        <strong>
+                            ${awayXG.toFixed(2)}
+                        </strong>
+                    </div>
+
+                </div>
+
+                <!-- GOAL MARKETS -->
+
+                <h3>
+                    ⚽ Goal Markets
+                </h3>
+
+                <div class="markets-grid">
+
+                    <div>
+                        <span>Over 1.5</span>
+                        <strong>${goals.over_1_5}%</strong>
+                    </div>
+
+                    <div>
+                        <span>Over 2.5</span>
+                        <strong>${goals.over_2_5}%</strong>
+                    </div>
+
+                    <div>
+                        <span>Under 2.5</span>
+                        <strong>${goals.under_2_5}%</strong>
+                    </div>
+
+                    <div>
+                        <span>Over 3.5</span>
+                        <strong>${goals.over_3_5}%</strong>
+                    </div>
+
+                    <div>
+                        <span>BTTS Yes</span>
+                        <strong>${goals.btts_yes}%</strong>
+                    </div>
+
+                    <div>
+                        <span>BTTS No</span>
+                        <strong>${goals.btts_no}%</strong>
+                    </div>
+
+                </div>
+
+                <!-- DOUBLE CHANCE -->
+
+                <h3>
+                    🔐 Double Chance
+                </h3>
+
+                <div class="markets-grid">
+
+                    <div>
+                        <span>1X</span>
+                        <strong>${number(doubleChance["1X"])}%</strong>
+                    </div>
+
+                    <div>
+                        <span>X2</span>
+                        <strong>${number(doubleChance["X2"])}%</strong>
+                    </div>
+
+                    <div>
+                        <span>12</span>
+                        <strong>${number(doubleChance["12"])}%</strong>
+                    </div>
+
+                </div>
+
+                <!-- BEST MARKET -->
+
+                <div class="best-market">
+
+                    <span>
+                        Harmon AI strongest statistical market
+                    </span>
+
+                    <strong>
+                        ${escapeHtml(bestMarket)}
+                    </strong>
+
+                    <b>
+                        ${bestMarketProbability}%
+                    </b>
+
+                </div>
+
+                <!-- FORM -->
+
+                <h3>
+                    📊 Recent Form
+                </h3>
+
+                <div class="form-section">
+
+                    <div>
+
+                        <strong>
+                            ${escapeHtml(data.home.name)}
+                        </strong>
+
+                        <div class="form-string">
+                            ${escapeHtml(
+                                homeForm.form_string || "N/A"
+                            )}
+                        </div>
+
+                        <p>
+                            ${number(homeForm.matches)} matches •
+                            ${number(homeForm.points_per_game)} points/game
+                        </p>
+
+                    </div>
+
+                    <div>
+
+                        <strong>
+                            ${escapeHtml(data.away.name)}
+                        </strong>
+
+                        <div class="form-string">
+                            ${escapeHtml(
+                                awayForm.form_string || "N/A"
+                            )}
+                        </div>
+
+                        <p>
+                            ${number(awayForm.matches)} matches •
+                            ${number(awayForm.points_per_game)} points/game
+                        </p>
+
+                    </div>
+
+                </div>
+
+                <!-- H2H -->
+
+                <div class="info-card">
+
+                    ⚔️ H2H:
+
+                    <strong>
+                        ${h2hMatches}
+                    </strong>
+
+                    previous matches
+
+                </div>
+
+                <!-- API COMPARISON -->
+
+                <div class="info-card">
+
+                    API prediction:
+
+                    <strong>
+                        ${
+                            apiPrediction
+                                ? "Available"
+                                : "Not available"
+                        }
+                    </strong>
+
+                    <small>
+                        Harmon AI does not copy this prediction.
+                    </small>
+
+                </div>
+
+                <!-- DISCLAIMER -->
+
+                <div class="warning">
+
+                    ⚠️ Harmon AI ni mfumo wa
+                    statistical analysis.
+                    Hakuna prediction inayoweza
+                    kuhakikisha matokeo ya mechi.
+
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+    // Remove an old modal before opening a new one.
+    const oldModal =
+        document.getElementById("analysisModal");
+
+    if (oldModal) {
+        oldModal.remove();
+    }
+
+    document.body.insertAdjacentHTML(
+        "beforeend",
+        html
+    );
+}
+
+
+// ==========================================================
+// CLOSE
+// ==========================================================
+
+function closeAnalysis() {
+
+
+    const modal =
+        document.getElementById(
+            "analysisModal"
+        );
+
+
+    if (modal) {
+
+        modal.remove();
+
+    }
+
+}
+
+
+// ==========================================================
+// EVENTS
+// ==========================================================
+
+document.getElementById("searchInput").addEventListener("input", function() {
+    clearTimeout(searchTimer);
+    const query = this.value;
+    searchTimer = setTimeout(() => searchTeamsLive(query), 350);
+});
+
+document.getElementById("clearSearch").addEventListener("click", clearSearch);
+
+
+// ==========================================================
+// START
+// ==========================================================
+
+loadMatches();
+
+
+</script>
+
+
+</body>
+
+</html>
