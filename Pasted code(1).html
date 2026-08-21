@@ -1,0 +1,1564 @@
+<!DOCTYPE html>
+
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        Harmon AI Predictor
+    </title>
+
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for(
+            'static',
+            filename='style.css'
+        ) }}"
+    >
+
+</head>
+
+
+<body>
+
+
+<div class="container">
+
+
+    <!-- HEADER -->
+
+    <header class="header">
+
+        <div class="logo">
+
+            HARMON
+            <span>AI</span>
+
+        </div>
+
+
+        <h1>
+
+            Football AI Predictor
+
+        </h1>
+
+
+        <p>
+
+            Statistical football analysis
+
+        </p>
+
+    </header>
+
+
+    <!-- CONTROLS -->
+
+    <section class="controls">
+
+        <input
+            id="searchInput"
+            type="text"
+            placeholder="🔎 Search team..."
+        >
+
+
+        <select id="leagueFilter">
+
+            <option value="all">
+
+                All Leagues
+
+            </option>
+
+        </select>
+
+    </section>
+
+
+    <!-- MATCHES -->
+
+    <section>
+
+        <div class="section-title">
+
+            <h2>
+
+                📅 Today's Matches
+
+            </h2>
+
+
+            <span id="matchCount">
+
+                Loading...
+
+            </span>
+
+        </div>
+
+
+        <div id="matches">
+
+            <div class="loading">
+
+                Loading matches...
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+</div>
+
+
+<script>
+
+
+// ==========================================================
+// GLOBAL
+// ==========================================================
+
+let allMatches = [];
+
+
+// ==========================================================
+// LOAD MATCHES
+// ==========================================================
+
+async function loadMatches() {
+
+    const matchesContainer =
+        document.getElementById("matches");
+
+    matchesContainer.innerHTML = `
+        <div class="loading-state">
+            Loading today's matches...
+        </div>
+    `;
+
+    try {
+
+        const response =
+            await fetch("/api/matches", {
+                cache: "no-store"
+            });
+
+        const data =
+            await response.json();
+
+        if (!response.ok || !data.success) {
+
+            showError(
+                formatError(data.error || `Server returned HTTP ${response.status}`)
+            );
+
+            return;
+
+        }
+
+
+        allMatches =
+            data.matches;
+
+
+        createLeagueFilter();
+
+
+        displayMatches(
+            allMatches
+        );
+
+
+    }
+
+    catch(error) {
+
+
+        console.error(error);
+
+
+        showError(
+            "Failed to load matches."
+        );
+
+    }
+
+}
+
+
+// ==========================================================
+// ERROR
+// ==========================================================
+
+function formatError(message) {
+
+    if (message === null || message === undefined) {
+        return "Unknown error";
+    }
+
+    if (typeof message === "object") {
+        try {
+            return JSON.stringify(message, null, 2);
+        } catch (error) {
+            return String(message);
+        }
+    }
+
+    return String(message);
+}
+
+
+function escapeHtml(value) {
+
+    return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+
+function showError(
+    message
+) {
+
+    const safeMessage =
+        escapeHtml(formatError(message));
+
+    document.getElementById(
+        "matches"
+    ).innerHTML = `
+
+        <div class="error">
+
+            <strong>⚠️ API Error</strong>
+
+            <pre>${safeMessage}</pre>
+
+        </div>
+
+    `;
+
+}
+
+
+// ==========================================================
+// LEAGUE FILTER
+// ==========================================================
+
+function createLeagueFilter() {
+
+
+    const select =
+        document.getElementById(
+            "leagueFilter"
+        );
+
+
+    const leagues =
+        new Map();
+
+
+    allMatches.forEach(
+        match => {
+
+
+            leagues.set(
+
+                match.league_id,
+
+                match.league_name
+
+            );
+
+        }
+    );
+
+
+    leagues.forEach(
+        (name, id) => {
+
+
+            const option =
+                document.createElement(
+                    "option"
+                );
+
+
+            option.value =
+                id;
+
+
+            option.textContent =
+                name;
+
+
+            select.appendChild(
+                option
+            );
+
+        }
+    );
+
+}
+
+
+// ==========================================================
+// DISPLAY MATCHES
+// ==========================================================
+
+function displayMatches(
+    matches
+) {
+
+
+    const container =
+        document.getElementById(
+            "matches"
+        );
+
+
+    document.getElementById(
+        "matchCount"
+    ).textContent =
+        `${matches.length} matches`;
+
+
+    if (!matches.length) {
+
+
+        container.innerHTML = `
+
+            <div class="empty">
+
+                No matches found.
+
+            </div>
+
+        `;
+
+
+        return;
+
+    }
+
+
+    container.innerHTML = "";
+
+
+    const grouped = {};
+
+
+    matches.forEach(
+        match => {
+
+
+            const key =
+                `${match.league_id}`;
+
+
+            if (!grouped[key]) {
+
+                grouped[key] = [];
+
+            }
+
+
+            grouped[key].push(
+                match
+            );
+
+        }
+    );
+
+
+    Object.values(
+        grouped
+    ).forEach(
+        leagueMatches => {
+
+
+            const first =
+                leagueMatches[0];
+
+
+            const leagueBox =
+                document.createElement(
+                    "div"
+                );
+
+
+            leagueBox.className =
+                "league-box";
+
+
+            leagueBox.innerHTML = `
+
+                <div class="league-header">
+
+                    <div>
+
+                        <strong>
+
+                            ${first.league_name}
+
+                        </strong>
+
+                        <small>
+
+                            ${first.country}
+
+                        </small>
+
+                    </div>
+
+                </div>
+
+            `;
+
+
+            leagueMatches.forEach(
+                match => {
+
+
+                    const date =
+                        new Date(
+                            match.date
+                        );
+
+
+                    const time =
+                        date.toLocaleTimeString(
+                            [],
+                            {
+                                hour:
+                                    "2-digit",
+
+                                minute:
+                                    "2-digit"
+                            }
+                        );
+
+
+                    const isLive = [
+
+                        "1H",
+                        "HT",
+                        "2H",
+                        "ET",
+                        "BT",
+                        "P",
+                        "LIVE"
+
+                    ].includes(
+                        match.status
+                    );
+
+
+                    const score =
+                        match.home_goals !== null
+                        &&
+                        match.away_goals !== null
+                        ?
+
+                        `${match.home_goals}
+                         -
+                         ${match.away_goals}`
+
+                        :
+
+                        time;
+
+
+                    const card =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    card.className =
+                        "match-card";
+
+
+                    card.innerHTML = `
+
+                        <div class="team">
+
+                            <img
+                                src="${match.home_logo}"
+                                alt=""
+                            >
+
+                            <span>
+
+                                ${match.home_team}
+
+                            </span>
+
+                        </div>
+
+
+                        <div class="match-middle">
+
+
+                            <strong
+                                class="${
+                                    isLive
+                                    ? "live"
+                                    : ""
+                                }"
+                            >
+
+                                ${score}
+
+                            </strong>
+
+
+                            <small>
+
+                                ${
+                                    isLive
+                                    ? "🔴 LIVE"
+                                    : match.status_long
+                                }
+
+                            </small>
+
+
+                            <button
+                                onclick="
+                                    analyzeMatch(
+                                        ${match.fixture_id},
+                                        this
+                                    )
+                                "
+                            >
+
+                                🔮 Analyze
+
+                            </button>
+
+
+                        </div>
+
+
+                        <div class="team">
+
+                            <img
+                                src="${match.away_logo}"
+                                alt=""
+                            >
+
+                            <span>
+
+                                ${match.away_team}
+
+                            </span>
+
+                        </div>
+
+                    `;
+
+
+                    leagueBox.appendChild(
+                        card
+                    );
+
+                }
+            );
+
+
+            container.appendChild(
+                leagueBox
+            );
+
+        }
+    );
+
+}
+
+
+// ==========================================================
+// FILTER
+// ==========================================================
+
+function filterMatches() {
+
+
+    const search =
+        document.getElementById(
+            "searchInput"
+        )
+        .value
+        .toLowerCase();
+
+
+    const league =
+        document.getElementById(
+            "leagueFilter"
+        )
+        .value;
+
+
+    const filtered =
+        allMatches.filter(
+            match => {
+
+
+                const home =
+                    match.home_team
+                    .toLowerCase();
+
+
+                const away =
+                    match.away_team
+                    .toLowerCase();
+
+
+                const searchOK =
+
+                    home.includes(
+                        search
+                    )
+
+                    ||
+
+                    away.includes(
+                        search
+                    );
+
+
+                const leagueOK =
+
+                    league === "all"
+
+                    ||
+
+                    String(
+                        match.league_id
+                    ) === league;
+
+
+                return (
+                    searchOK
+                    &&
+                    leagueOK
+                );
+
+            }
+        );
+
+
+    displayMatches(
+        filtered
+    );
+
+}
+
+
+// ==========================================================
+// ANALYZE
+// ==========================================================
+
+async function analyzeMatch(
+    fixtureId,
+    button
+) {
+
+
+    button.disabled =
+        true;
+
+
+    button.textContent =
+        "⏳ Analyzing...";
+
+
+    try {
+
+
+        const response =
+            await fetch(
+                `/api/analyze/${fixtureId}`
+            );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok || !data.success) {
+
+            alert(
+                formatError(
+                    data.error ||
+                    `Server returned HTTP ${response.status}`
+                )
+            );
+
+            return;
+
+        }
+
+
+        showAnalysis(
+            data
+        );
+
+
+    }
+
+    catch(error) {
+
+
+        console.error(error);
+
+
+        alert(
+            "Analysis failed: " +
+            formatError(error.message || error)
+        );
+
+    }
+
+    finally {
+
+
+        button.disabled =
+            false;
+
+
+        button.textContent =
+            "🔮 Analyze";
+
+    }
+
+}
+
+
+// ==========================================================
+// SHOW ANALYSIS
+// ==========================================================
+
+function showAnalysis(
+    data
+) {
+
+    // Safe response normalization: keep the existing UI working even
+    // when the backend returns home/away under a different wrapper.
+    data = data || {};
+
+    const match =
+        data.match ||
+        data.fixture ||
+        data.match_data ||
+        {};
+
+    const rawHome =
+        data.home ||
+        match.home ||
+        {};
+
+    const rawAway =
+        data.away ||
+        match.away ||
+        {};
+
+    const homeName =
+        rawHome.name ||
+        rawHome.team_name ||
+        match.home_team ||
+        data.home_team ||
+        "Home Team";
+
+    const awayName =
+        rawAway.name ||
+        rawAway.team_name ||
+        match.away_team ||
+        data.away_team ||
+        "Away Team";
+
+    const homeLogo =
+        rawHome.logo ||
+        rawHome.team_logo ||
+        match.home_logo ||
+        data.home_logo ||
+        "";
+
+    const awayLogo =
+        rawAway.logo ||
+        rawAway.team_logo ||
+        match.away_logo ||
+        data.away_logo ||
+        "";
+
+    const leagueData =
+        data.league ||
+        match.league ||
+        {};
+
+    data.home = {
+        ...rawHome,
+        name: homeName,
+        logo: homeLogo
+    };
+
+    data.away = {
+        ...rawAway,
+        name: awayName,
+        logo: awayLogo
+    };
+
+    data.league = {
+        ...leagueData,
+        name:
+            leagueData.name ||
+            match.league_name ||
+            data.league_name ||
+            "Football",
+        country:
+            leagueData.country ||
+            match.country ||
+            data.country ||
+            ""
+    };
+
+    const ai =
+        data.harmon_ai ||
+        data.prediction ||
+        data.analysis ||
+        {};
+
+    const result =
+        ai.result_probabilities ||
+        ai.result ||
+        {
+            home: 0,
+            draw: 0,
+            away: 0
+        };
+
+    const goals =
+        ai.goal_markets ||
+        ai.goals ||
+        {
+            over_1_5: 0,
+            over_2_5: 0,
+            under_2_5: 0,
+            over_3_5: 0,
+            btts_yes: 0,
+            btts_no: 0
+        };
+
+    const doubleChance =
+        ai.double_chance ||
+        {
+            "1X": 0,
+            "X2": 0,
+            "12": 0
+        };
+
+    const homeForm =
+        ai.home_form ||
+        data.home_form ||
+        {
+            form_string: "N/A",
+            matches: 0,
+            points_per_game: 0
+        };
+
+    const awayForm =
+        ai.away_form ||
+        data.away_form ||
+        {
+            form_string: "N/A",
+            matches: 0,
+            points_per_game: 0
+        };
+
+    const expectedGoals =
+        ai.expected_goals ||
+        {
+            home: 0,
+            away: 0,
+            total: 0
+        };
+
+
+    const ai =
+        data.harmon_ai;
+
+
+    const result =
+        ai.result_probabilities;
+
+
+    const goals =
+        ai.goal_markets;
+
+
+    const doubleChance =
+        ai.double_chance;
+
+
+    const homeForm =
+        ai.home_form;
+
+
+    const awayForm =
+        ai.away_form;
+
+
+    const html = `
+
+        <div
+            class="analysis-overlay"
+            id="analysisModal"
+        >
+
+
+            <div class="analysis-modal">
+
+
+                <button
+                    class="close-analysis"
+                    onclick="
+                        closeAnalysis()
+                    "
+                >
+
+                    ×
+
+                </button>
+
+
+                <!-- MATCH HEADER -->
+
+                <div class="analysis-header">
+
+
+                    <img
+                        src="${data.home.logo}"
+                        alt=""
+                    >
+
+
+                    <div>
+
+                        <h2>
+
+                            ${data.home.name}
+
+                            <span>
+                                VS
+                            </span>
+
+                            ${data.away.name}
+
+                        </h2>
+
+
+                        <p>
+
+                            ${data.league.name}
+
+                            •
+                            ${data.league.country}
+
+                        </p>
+
+                    </div>
+
+
+                    <img
+                        src="${data.away.logo}"
+                        alt=""
+                    >
+
+                </div>
+
+
+                <!-- MODEL -->
+
+                <div class="model-badge">
+
+                    🤖 Harmon AI Statistical Engine
+
+                </div>
+
+
+                <!-- CONFIDENCE -->
+
+                <div class="confidence">
+
+                    <span>
+
+                        Model Confidence
+
+                    </span>
+
+
+                    <strong>
+
+                        ${ai.confidence}
+
+                    </strong>
+
+                </div>
+
+
+                <!-- RESULT -->
+
+                <h3>
+
+                    🎯 Match Result Probability
+
+                </h3>
+
+
+                <div class="prediction-grid">
+
+
+                    <div class="prediction-box">
+
+                        <span>
+
+                            🏠 Home Win
+
+                        </span>
+
+
+                        <strong>
+
+                            ${result.home}%
+
+                        </strong>
+
+                    </div>
+
+
+                    <div class="prediction-box">
+
+                        <span>
+
+                            🤝 Draw
+
+                        </span>
+
+
+                        <strong>
+
+                            ${result.draw}%
+
+                        </strong>
+
+                    </div>
+
+
+                    <div class="prediction-box">
+
+                        <span>
+
+                            ✈️ Away Win
+
+                        </span>
+
+
+                        <strong>
+
+                            ${result.away}%
+
+                        </strong>
+
+                    </div>
+
+
+                </div>
+
+
+                <!-- PREDICTED RESULT -->
+
+                <div class="best-prediction">
+
+                    <span>
+
+                        Most likely result
+
+                    </span>
+
+
+                    <strong>
+
+                        ${ai.predicted_result}
+
+                    </strong>
+
+                </div>
+
+
+                <!-- EXPECTED GOALS -->
+
+                <h3>
+
+                    ⚽ Expected Goals
+
+                </h3>
+
+
+                <div class="expected-goals">
+
+
+                    <div>
+
+                        <span>
+                            ${data.home.name}
+                        </span>
+
+
+                        <strong>
+
+                            ${expectedGoals.home}
+
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            Total
+                        </span>
+
+
+                        <strong>
+
+                            ${expectedGoals.total}
+
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            ${data.away.name}
+                        </span>
+
+
+                        <strong>
+
+                            ${expectedGoals.away}
+
+                        </strong>
+
+                    </div>
+
+
+                </div>
+
+
+                <!-- GOAL MARKETS -->
+
+                <h3>
+
+                    ⚽ Goal Markets
+
+                </h3>
+
+
+                <div class="markets-grid">
+
+
+                    <div>
+
+                        <span>
+                            Over 1.5
+                        </span>
+
+                        <strong>
+                            ${goals.over_1_5}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            Over 2.5
+                        </span>
+
+                        <strong>
+                            ${goals.over_2_5}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            Under 2.5
+                        </span>
+
+                        <strong>
+                            ${goals.under_2_5}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            Over 3.5
+                        </span>
+
+                        <strong>
+                            ${goals.over_3_5}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            BTTS Yes
+                        </span>
+
+                        <strong>
+                            ${goals.btts_yes}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            BTTS No
+                        </span>
+
+                        <strong>
+                            ${goals.btts_no}%
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <!-- DOUBLE CHANCE -->
+
+                <h3>
+
+                    🔐 Double Chance
+
+                </h3>
+
+
+                <div class="markets-grid">
+
+
+                    <div>
+
+                        <span>
+                            1X
+                        </span>
+
+                        <strong>
+                            ${doubleChance["1X"]}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            X2
+                        </span>
+
+                        <strong>
+                            ${doubleChance["X2"]}%
+                        </strong>
+
+                    </div>
+
+
+                    <div>
+
+                        <span>
+                            12
+                        </span>
+
+                        <strong>
+                            ${doubleChance["12"]}%
+                        </strong>
+
+                    </div>
+
+                </div>
+
+
+                <!-- BEST MARKET -->
+
+                <div class="best-market">
+
+                    <span>
+
+                        Harmon AI strongest
+                        statistical market
+
+                    </span>
+
+
+                    <strong>
+
+                        ${ai.best_market}
+
+                    </strong>
+
+
+                    <b>
+
+                        ${ai.best_market_probability}%
+
+                    </b>
+
+                </div>
+
+
+                <!-- FORM -->
+
+                <h3>
+
+                    📊 Recent Form
+
+                </h3>
+
+
+                <div class="form-section">
+
+
+                    <div>
+
+                        <strong>
+
+                            ${data.home.name}
+
+                        </strong>
+
+
+                        <div class="form-string">
+
+                            ${
+                                homeForm.form_string
+                                || "N/A"
+                            }
+
+                        </div>
+
+
+                        <p>
+
+                            ${
+                                homeForm.matches
+                            }
+                            matches •
+                            ${
+                                homeForm.points_per_game
+                            }
+                            points/game
+
+                        </p>
+
+                    </div>
+
+
+                    <div>
+
+                        <strong>
+
+                            ${data.away.name}
+
+                        </strong>
+
+
+                        <div class="form-string">
+
+                            ${
+                                awayForm.form_string
+                                || "N/A"
+                            }
+
+                        </div>
+
+
+                        <p>
+
+                            ${
+                                awayForm.matches
+                            }
+                            matches •
+                            ${
+                                awayForm.points_per_game
+                            }
+                            points/game
+
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <!-- H2H -->
+
+                <div class="info-card">
+
+                    ⚔️ H2H:
+
+                    <strong>
+
+                        ${
+                            data.h2h
+                            ? data.h2h.length
+                            : 0
+                        }
+
+                    </strong>
+
+                    previous matches
+
+                </div>
+
+
+                <!-- API COMPARISON -->
+
+                <div class="info-card">
+
+                    API prediction:
+
+                    <strong>
+
+                        ${
+                            data.api_prediction
+                            ? "Available"
+                            : "Not available"
+                        }
+
+                    </strong>
+
+                    <small>
+
+                        Harmon AI does not copy
+                        this prediction.
+
+                    </small>
+
+                </div>
+
+
+                <!-- DISCLAIMER -->
+
+                <div class="warning">
+
+                    ⚠️ Harmon AI ni mfumo wa
+                    statistical analysis.
+                    Hakuna prediction inayoweza
+                    kuhakikisha matokeo ya mechi.
+
+                </div>
+
+
+            </div>
+
+        </div>
+
+    `;
+
+
+    document.body.insertAdjacentHTML(
+        "beforeend",
+        html
+    );
+
+}
+
+
+// ==========================================================
+// CLOSE
+// ==========================================================
+
+function closeAnalysis() {
+
+
+    const modal =
+        document.getElementById(
+            "analysisModal"
+        );
+
+
+    if (modal) {
+
+        modal.remove();
+
+    }
+
+}
+
+
+// ==========================================================
+// EVENTS
+// ==========================================================
+
+document
+    .getElementById(
+        "searchInput"
+    )
+    .addEventListener(
+        "input",
+        filterMatches
+    );
+
+
+document
+    .getElementById(
+        "leagueFilter"
+    )
+    .addEventListener(
+        "change",
+        filterMatches
+    );
+
+
+// ==========================================================
+// START
+// ==========================================================
+
+loadMatches();
+
+
+</script>
+
+
+</body>
+
+</html>
