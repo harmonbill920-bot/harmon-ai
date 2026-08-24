@@ -32,7 +32,8 @@ def health():
 @app.route("/api/matches")
 def matches():
     date = request.args.get("date") or datetime.now(TZOBJ).date().isoformat()
-    r = get_fixtures_by_date(date)
+    refresh_live = request.args.get("live", "0") == "1"
+    r = get_fixtures_by_date(date, refresh_live=refresh_live)
     if not r.get("success"):
         return jsonify({
             "success": False, "error": r.get("error", "API error"),
@@ -42,7 +43,8 @@ def matches():
         "success": True, "date": date, "count": r["count"],
         "matches": r["matches"], "live": r.get("live", False),
         "cached": r.get("cached", False), "warning": r.get("warning"),
-        "saved_at": r.get("saved_at"), "quota": quota()
+        "saved_at": r.get("saved_at"), "quota": quota(), "live_refresh": r.get("live_refresh", False),
+        "live_refresh_error": r.get("live_refresh_error")
     })
 
 @app.route("/api/team-search")
@@ -69,7 +71,7 @@ def analyze(fixture_id):
     if not fx.get("success"):
         return jsonify(fx), 502
     m = fx["match"]
-    p = predict_match(m["home_id"], m["away_id"], fixture_id)
+    p = predict_match(m["home_id"], m["away_id"], fixture_id, league_id=m.get("league_id"), season=m.get("season"))
     if not p.get("success"):
         return jsonify({
             "success": False, "error": p.get("error"),

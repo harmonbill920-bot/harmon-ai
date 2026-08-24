@@ -5,13 +5,15 @@ from cache_store import get_prediction, put_prediction
 def poisson(k, lam):
     return math.exp(-lam) * (lam**k) / math.factorial(k)
 
-def predict_match(home_id, away_id, fixture_id=None):
-    key = hashlib.sha256(f"{home_id}:{away_id}:{fixture_id or 0}:v5".encode()).hexdigest()
+def predict_match(home_id, away_id, fixture_id=None, league_id=None, season=None):
+    key = hashlib.sha256(f"{home_id}:{away_id}:{fixture_id or 0}:{league_id or 0}:{season or 0}:v6".encode()).hexdigest()
     cached = get_prediction(key)
     if cached:
         return {"success": True, **cached["data"], "prediction_cached": True, "prediction_saved_at": cached["saved_at"]}
 
-    hf, af, hh = get_recent_form(home_id), get_recent_form(away_id), get_h2h(home_id, away_id)
+    hf = get_recent_form(home_id, league_id=league_id, season=season)
+    af = get_recent_form(away_id, league_id=league_id, season=season)
+    hh = get_h2h(home_id, away_id)
     for x in (hf, af, hh):
         if not x.get("success"):
             return {"success": False, "error": x.get("error", "Prediction data unavailable.")}
@@ -66,7 +68,12 @@ def predict_match(home_id, away_id, fixture_id=None):
          "home_form":h,"away_form":a,"h2h":head,
          "correct_score":[{"home_goals":i,"away_goals":j,"probability":round(v/norm*100,1)} for i,j,v in ranked],
          "data_quality":round(55+45*min(1,(h["matches"]+a["matches"])/20),1),
-         "explanation":reasons,"model_version":"v5","source":"Harmon AI Statistical Engine",
-         "prediction_cached":False}
+         "explanation":reasons,"model_version":"v5","source":"Harmon Football Prediction Statistical Engine",
+         "prediction_cached":False,
+         "data_quality": round(55+45*min(1,(h["matches"]+a["matches"])/20),1),
+         "limited_data": bool(hf.get("limited") or af.get("limited")),
+         "historical_seasons": {"home": hf.get("season_used"), "away": af.get("season_used")},
+         "warning": hf.get("warning") or af.get("warning")
+         }
     put_prediction(key, fixture_id or 0, out)
     return {"success":True, **out}
